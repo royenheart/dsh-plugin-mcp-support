@@ -1,0 +1,38 @@
+{
+  "name": "@royenheart/dsh-plugin-mcp-suppor",
+  "version": "0.1.0",
+  "description": "Thin, non-duplicating dsh wrapper over the native @deepseek-ai/dsh-mcp-client bridge: composition- and settings-driven MCP server mounts.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test tests/*.spec.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-mcp-client": "^0.1.0-rc.5",
+    "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "devDependencies": {
+    "@types/node": "*",
+    "tsdown": "^0.22.2",
+    "typescript": "^5.7.0"
+  }
+}
