@@ -14,12 +14,17 @@ Usage:
     python3 install.py install [--profile web] [--home ~/.dsh]
     python3 install.py uninstall [--profile web] [--home ~/.dsh]
 
-Requires only the Python standard library.
+Requires the Python standard library plus Node.js/npm. Built bundles are not
+versioned: when `lib/` is missing, the script builds the repository's own
+toolchain (`npm install` + `npm run build`) before installing; only a missing
+npm reports an error instead of continuing.
 """
 
 import argparse
 import json
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -80,6 +85,40 @@ def ensure_link(link: Path, target: Path) -> None:
     link.symlink_to(target, target_is_directory=True)
 
 
+def ensure_built(root: Path) -> None:
+    """Make sure the host bundle exists.
+
+    `lib/` is generated locally, not versioned. A fresh clone therefore
+    bootstraps the repository's own toolchain: `npm install` provisions the
+    devDependencies (and peer dependencies) inside this checkout, then
+    `npm run build` emits the bundle. An already-built checkout skips the
+    toolchain step; a machine without npm gets an actionable error.
+    """
+    required = [root / "lib" / "index.js"]
+    if all(path.exists() for path in required):
+        return
+    npm = shutil.which("npm")
+    if npm is None:
+        raise SystemExit(
+            "built bundle missing and npm is not on PATH - install Node.js/npm, "
+            "then run `npm install && npm run build` inside " + str(root)
+        )
+    print("built bundle missing - bootstrapping toolchain and building (npm install + npm run build)...")
+    try:
+        subprocess.run([npm, "install"], cwd=root, check=True)
+        subprocess.run([npm, "run", "build"], cwd=root, check=True)
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(
+            "bootstrap build failed (npm exit " + str(error.returncode) + ") - "
+            "run `npm install` and `npm run build` inside " + str(root) + " to see the diagnostics"
+        ) from error
+    missing = [str(path) for path in required if not path.exists()]
+    if missing:
+        raise SystemExit(
+            "bootstrap build finished but produced no artifacts: " + ", ".join(missing)
+        )
+
+
 def ensure_runtime_peer_links(root: Path, home: str) -> None:
     """Mirror the profile module tree's harness peers into this checkout.
 
@@ -110,10 +149,7 @@ def install(args: argparse.Namespace) -> None:
     ensure_profile(profile)
 
     root = repo_root()
-    if not (root / "lib" / "index.js").exists():
-        raise SystemExit(
-            "built bundle missing - run `npm run build` (tsdown) first"
-        )
+    ensure_built(root)
     ensure_runtime_peer_links(root, args.home)
 
     # 1. Symlink the package into the profile node_modules (idempotent).
