@@ -14,11 +14,22 @@ vendor or re-implement any connection, tool-discovery, or reconnect logic.
 ## Layout
 
 ```
-src/index.ts          # host plugin: settings registration + dynamic child mounts
+src/index.ts          # host plugin: settings registration + dynamic child mounts + status route
+src/client/index.ts   # browser half: "mcp" view tab (status page)
 src/core/config.ts    # pure normalize/merge helpers (no cordis imports)
+src/core/status.ts    # pure status-row shaping helper
 tests/                # node:test suite using a real cordis Context
-lib/                  # built host entry (npm run build)
+lib/                  # built host + client entries (npm run build)
 ```
+
+## Web status view
+
+The client half registers an `mcp` tab in the session header's view-tab row,
+immediately to the right of the `轨迹` (trajectory) tab and before any later
+tabs such as `技能`. Selecting it fetches
+`/plugins/@royenheart/dsh-plugin-mcp-support/status` and shows each effective
+MCP server with its transport, mounted state, and the last mount error when
+present. No servers configured renders "No MCP servers configured."
 
 ## Install into a profile
 

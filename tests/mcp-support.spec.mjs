@@ -1,10 +1,10 @@
 /**
  * Host-side tests for dsh-plugin-mcp-support.
  *
- * Uses a real cordis Context plus an in-memory settings provider and a stub
- * `tools` service. No MCP server is started: the empty-settings path proves
- * namespace registration, and the pure core helpers prove normalization and
- * merge behavior.
+ * Uses a real cordis Context plus an in-memory settings provider and stub
+ * `tools`/`webServer` services. No MCP server is started: the empty-settings
+ * path proves namespace registration and route registration, and the pure
+ * core helpers prove normalization, merge, and status-shaping behavior.
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -16,6 +16,8 @@ import {
   name,
   normalizeServerConfig,
   servers,
+  STATUS_ENDPOINT,
+  summarizeServerStatus,
 } from '../lib/index.js'
 
 class MemorySettings extends SettingsProvider {
@@ -34,6 +36,20 @@ class MockTools extends Service {
   }
 }
 
+class MockWebServer extends Service {
+  routes = []
+  constructor(ctx) {
+    super(ctx, 'webServer')
+  }
+  register(route) {
+    this.routes.push(route)
+    return () => {
+      const at = this.routes.indexOf(route)
+      if (at !== -1) this.routes.splice(at, 1)
+    }
+  }
+}
+
 const settingsPlugin = {
   name: 'memory-settings',
   inject: [],
@@ -46,10 +62,17 @@ const toolsPlugin = {
   apply(ctx) { ctx.plugin(MockTools) },
 }
 
+const webServerPlugin = {
+  name: 'mock-webserver',
+  inject: [],
+  apply(ctx) { ctx.plugin(MockWebServer) },
+}
+
 async function boot(config) {
   const ctx = new Context()
   await ctx.plugin(settingsPlugin)
   await ctx.plugin(toolsPlugin)
+  await ctx.plugin(webServerPlugin)
   await ctx.plugin({ name, inject, apply }, config)
   return ctx
 }
@@ -58,6 +81,13 @@ test('empty config registers the mcp-support settings namespace', async () => {
   const ctx = await boot()
   const value = ctx.settings.get(settingsNamespace('mcp-support'))
   assert.deepEqual(value, { servers: [] })
+})
+
+test('empty config registers the status route', async () => {
+  const ctx = await boot()
+  const route = ctx.webServer.routes.find((entry) => entry.path === STATUS_ENDPOINT)
+  assert.ok(route)
+  assert.equal(route.kind, 'exact')
 })
 
 test('duplicate serverName in composition throws a clear error', async () => {
@@ -125,4 +155,25 @@ test('servers helper merges composition first with settings overriding by server
     'settings-only',
   ])
   assert.equal(effective.find((server) => server.serverName === 'overridden').command, 'node b')
+})
+
+test('summarizeServerStatus reports mounted state and last error', () => {
+  const effective = servers(
+    [
+      { transport: 'stdio', serverName: 'mounted', command: 'node a' },
+      { transport: 'streamable-http', serverName: 'failed', url: 'http://localhost:3000/mcp' },
+      { transport: 'stdio', serverName: 'pending', command: 'node b' },
+    ],
+    [],
+  )
+  const status = summarizeServerStatus(
+    effective,
+    new Set(['mounted']),
+    new Map([['failed', 'connect ECONNREFUSED']]),
+  )
+  assert.deepEqual(status, [
+    { serverName: 'mounted', transport: 'stdio', mounted: true },
+    { serverName: 'failed', transport: 'streamable-http', mounted: false, error: 'connect ECONNREFUSED' },
+    { serverName: 'pending', transport: 'stdio', mounted: false },
+  ])
 })
