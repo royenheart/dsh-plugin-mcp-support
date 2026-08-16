@@ -33,9 +33,10 @@ present. No servers configured renders "No MCP servers configured."
 
 ## Install into a profile
 
-`lib/` is generated locally and is not committed. `install.py` builds the
-repository's own toolchain first (`npm install` + `npm run build`) and only
-reports an error when npm itself is missing.
+`lib/` is generated locally and is not committed. `install.py` always builds
+the repository's own toolchain first (`npm install` when the toolchain is
+missing, then `npm run build`) and only reports an error when npm itself is
+missing.
 
 Install/uninstall idempotently with the bundled script (stdlib-only Python).
 The package ships its own `cordis.patch.yml` (id `mcp-support`) and declares

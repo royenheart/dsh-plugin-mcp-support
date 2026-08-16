@@ -15,9 +15,9 @@ Usage:
     python3 install.py uninstall [--profile web] [--home ~/.dsh]
 
 Requires the Python standard library plus Node.js/npm. Built bundles are not
-versioned: when `lib/` is missing, the script builds the repository's own
-toolchain (`npm install` + `npm run build`) before installing; only a missing
-npm reports an error instead of continuing.
+versioned: `install.py` always builds the repository's own toolchain
+(`npm install` when needed, then `npm run build`) before installing; only a
+missing npm reports an error instead of continuing.
 """
 
 import argparse
@@ -86,36 +86,36 @@ def ensure_link(link: Path, target: Path) -> None:
 
 
 def ensure_built(root: Path) -> None:
-    """Make sure the host bundle exists.
+    """Build the repository's own host/client bundles before installing.
 
-    `lib/` is generated locally, not versioned. A fresh clone therefore
-    bootstraps the repository's own toolchain: `npm install` provisions the
-    devDependencies (and peer dependencies) inside this checkout, then
-    `npm run build` emits the bundle. An already-built checkout skips the
-    toolchain step; a machine without npm gets an actionable error.
+    `lib/` is generated locally and never versioned, so `install.py` always
+    runs the package's own build instead of trusting whatever files happen to
+    exist (a stale host-only `lib/index.js` must not skip the client bundle).
+    `npm install` provisions the dev toolchain only when it is missing; a
+    machine without npm reports an actionable error instead of continuing.
     """
-    required = [root / "lib" / "index.js"]
-    if all(path.exists() for path in required):
-        return
     npm = shutil.which("npm")
     if npm is None:
         raise SystemExit(
-            "built bundle missing and npm is not on PATH - install Node.js/npm, "
-            "then run `npm install && npm run build` inside " + str(root)
+            "npm is not on PATH - install Node.js/npm, then run "
+            "`npm install && npm run build` inside " + str(root)
         )
-    print("built bundle missing - bootstrapping toolchain and building (npm install + npm run build)...")
     try:
-        subprocess.run([npm, "install"], cwd=root, check=True)
+        if not (root / "node_modules" / ".bin" / "tsdown").exists():
+            print("installing the repository's own toolchain (npm install)...")
+            subprocess.run([npm, "install"], cwd=root, check=True)
+        print("building host/client bundles (npm run build)...")
         subprocess.run([npm, "run", "build"], cwd=root, check=True)
     except subprocess.CalledProcessError as error:
         raise SystemExit(
-            "bootstrap build failed (npm exit " + str(error.returncode) + ") - "
+            "build failed (npm exit " + str(error.returncode) + ") - "
             "run `npm install` and `npm run build` inside " + str(root) + " to see the diagnostics"
         ) from error
+    required = [root / "lib" / "index.js", root / "lib" / "client.js"]
     missing = [str(path) for path in required if not path.exists()]
     if missing:
         raise SystemExit(
-            "bootstrap build finished but produced no artifacts: " + ", ".join(missing)
+            "build finished but produced no artifacts: " + ", ".join(missing)
         )
 
 
