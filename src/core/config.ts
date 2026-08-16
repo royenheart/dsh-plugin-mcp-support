@@ -52,13 +52,13 @@ export interface StreamableHttpServerConfig {
 /** One normalized MCP server config, discriminated on `transport`. */
 export type McpServerConfig = StdioServerConfig | StreamableHttpServerConfig
 
-/** Resolved shape of the persisted `mcp-suppor` settings namespace. */
-export interface McpSupporSettings {
+/** Resolved shape of the persisted `mcp-support` settings namespace. */
+export interface McpSupportSettings {
   servers: McpServerConfig[]
 }
 
 /** Composition-time plugin config: the optional initial server list. */
-export interface McpSupporConfig {
+export interface McpSupportConfig {
   servers?: McpServerConfig[]
 }
 
@@ -107,14 +107,14 @@ export function normalizeServerConfig(input: unknown): McpServerConfig {
 export function normalizeServerConfigs(input: unknown): McpServerConfig[] {
   if (input === undefined || input === null) return []
   if (!Array.isArray(input)) {
-    throw new Error('mcp-suppor: servers must be an array of MCP server configs')
+    throw new Error('mcp-support: servers must be an array of MCP server configs')
   }
   return input.map((server, index) => {
     try {
       return normalizeServerConfig(server)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      throw new Error(`mcp-suppor: servers[${index}] is invalid: ${message}`)
+      throw new Error(`mcp-support: servers[${index}] is invalid: ${message}`)
     }
   })
 }
@@ -125,7 +125,7 @@ export function validateUniqueServerNames(servers: McpServerConfig[]): void {
   for (const server of servers) {
     if (seen.has(server.serverName)) {
       throw new Error(
-        `mcp-suppor: duplicate serverName "${server.serverName}" — each MCP server must have a unique serverName`,
+        `mcp-support: duplicate serverName "${server.serverName}" — each MCP server must have a unique serverName`,
       )
     }
     seen.add(server.serverName)

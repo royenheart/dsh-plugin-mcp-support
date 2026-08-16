@@ -1,11 +1,11 @@
-# @royenheart/dsh-plugin-mcp-suppor
+# @royenheart/dsh-plugin-mcp-support
 
 A thin, non-duplicating wrapper over the native dsh MCP bridge
 [`@deepseek-ai/dsh-mcp-client`](https://github.com/deepseek-ai/deepseek-harness).
 It makes MCP servers configurable through two layered sources:
 
 1. **Composition config** — the plugin entry's `servers` list.
-2. **Persisted dsh settings** — the `mcp-suppor` settings namespace.
+2. **Persisted dsh settings** — the `mcp-support` settings namespace.
 
 The wrapper mounts one native `mcp-client` child fiber per effective server and
 re-syncs the mounted set whenever the settings section changes. It does **not**
@@ -25,26 +25,43 @@ lib/                  # built host entry (npm run build)
 Build the package first:
 
 ```sh
-cd /home/royenheart/projects/dsh-plugins/dsh-plugin-mcp-suppor
+cd /home/royenheart/projects/dsh-plugins/dsh-plugin-mcp-support
 npm run build
 ```
 
-Then add the plugin to a profile:
+Then install/uninstall idempotently with the bundled script (stdlib-only Python).
+The package ships its own `cordis.patch.yml` (id `mcp-support`) and declares
+`dsh.bundle.patch`, so the script only links the package into the profile
+`node_modules`, adds the `link:` dependency, and appends the package to
+`dsh.profile.bundles`. The profile's own `cordis.patch.yml` is never modified:
 
 ```sh
-dsh plugin --profile <profile-name> add link:/home/royenheart/projects/dsh-plugins/dsh-plugin-mcp-suppor
+python3 install.py install --profile web          # install
+python3 install.py uninstall --profile web        # remove
+python3 install.py install --profile web --home "$DSH_HOME"   # explicit home
 ```
+
+Manual alternative:
+
+```sh
+dsh plugin --profile <profile-name> add link:/home/royenheart/projects/dsh-plugins/dsh-plugin-mcp-support
+```
+
+`dsh plugin` reconciles `dsh.profile.bundles` from the installed package's
+`dsh.bundle` declaration, so no profile patch edit is needed either.
 
 Restart dsh. The plugin declares `inject: ['settings', 'tools']`, so it loads
 once both the dsh settings service and the native tool registry are available.
 
 ## Composition config example
 
-In the profile composition (`cordis.yml`), configure the plugin row:
+Configure the bundle-inserted row by id in the profile's own
+`cordis.patch.yml` (the bundle patch already inserts the row; this patch only
+overrides its config):
 
 ```yaml
-plugins:
-  '@royenheart/dsh-plugin-mcp-suppor':
+- id: mcp-support
+  config:
     servers:
       - transport: stdio
         serverName: filesystem
@@ -73,10 +90,13 @@ Persisted settings are layered **over** the composition list. Servers are keyed
 by `serverName`: a settings server with the same name overrides the composition
 entry; settings-only servers are appended after composition servers.
 
+The namespace is `mcp-support`. (If `settings.yaml` still carries the key from
+an earlier misspelled build, rename that key to `mcp-support` once.)
+
 In the profile's settings document (`settings.yaml`):
 
 ```yaml
-mcp-suppor:
+mcp-support:
   servers:
     - transport: stdio
       serverName: filesystem

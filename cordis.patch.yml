@@ -1,0 +1,6 @@
+# Bundle patch for @royenheart/dsh-plugin-mcp-support.
+# The package's own host row: settings registration + dynamic child mounts of
+# the native `@deepseek-ai/dsh-mcp-client` bridge.
+- insert:
+    - id: mcp-support
+      name: '@royenheart/dsh-plugin-mcp-support'

@@ -1,5 +1,5 @@
 /**
- * Host-side tests for dsh-plugin-mcp-suppor.
+ * Host-side tests for dsh-plugin-mcp-support.
  *
  * Uses a real cordis Context plus an in-memory settings provider and a stub
  * `tools` service. No MCP server is started: the empty-settings path proves
@@ -54,9 +54,9 @@ async function boot(config) {
   return ctx
 }
 
-test('empty config registers the mcp-suppor settings namespace', async () => {
+test('empty config registers the mcp-support settings namespace', async () => {
   const ctx = await boot()
-  const value = ctx.settings.get(settingsNamespace('mcp-suppor'))
+  const value = ctx.settings.get(settingsNamespace('mcp-support'))
   assert.deepEqual(value, { servers: [] })
 })
 

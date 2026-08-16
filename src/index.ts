@@ -1,10 +1,10 @@
 /**
- * dsh-plugin-mcp-suppor — host half.
+ * dsh-plugin-mcp-support — host half.
  *
  * Thin wrapper over the native dsh MCP bridge `@deepseek-ai/dsh-mcp-client`.
  * The wrapper owns two things the native bridge deliberately does not:
  *
- * - an `mcp-suppor` settings namespace so MCP servers can be configured and
+ * - an `mcp-support` settings namespace so MCP servers can be configured and
  *   persisted through dsh settings, layered under the composition config;
  * - dynamic mount/dispose of one native mcp-client child fiber per effective
  *   server, re-synced whenever the settings section changes.
@@ -23,7 +23,7 @@ import {
   SettingsSchema,
   validateUniqueServerNames,
 } from './core/config.ts'
-import type { McpServerConfig, McpSupporConfig } from './core/config.ts'
+import type { McpServerConfig, McpSupportConfig } from './core/config.ts'
 
 export {
   normalizeServerConfig,
@@ -36,21 +36,21 @@ export {
 } from './core/config.ts'
 export type {
   McpServerConfig,
-  McpSupporConfig,
-  McpSupporSettings,
+  McpSupportConfig,
+  McpSupportSettings,
   ReconnectConfig,
   StdioServerConfig,
   StreamableHttpServerConfig,
 } from './core/config.ts'
 
 /** Cordis plugin name. */
-export const name = 'mcp-suppor'
+export const name = 'mcp-support'
 
 /** Required services: persisted settings + the native tool registry. */
 export const inject = ['settings', 'tools']
 
 /** Settings namespace (lowercase kebab-case). */
-export const SETTINGS_NAMESPACE = settingsNamespace('mcp-suppor')
+export const SETTINGS_NAMESPACE = settingsNamespace('mcp-support')
 
 /** Composition-time plugin config schema. */
 export const Config = z.object({
@@ -69,12 +69,12 @@ interface MountedServer {
  * @param ctx - host plugin context carrying settings and tools.
  * @param config - optional composition-time server list.
  */
-export async function apply(ctx: Context, config: McpSupporConfig = {}): Promise<void> {
+export async function apply(ctx: Context, config: McpSupportConfig = {}): Promise<void> {
   const composition = normalizeServerConfigs(config.servers)
   validateUniqueServerNames(composition)
 
   const settings = ctx.settings.register(
-    settingsNamespace('mcp-suppor'),
+    settingsNamespace('mcp-support'),
     SettingsSchema,
     { applies: 'live' },
   )
@@ -139,7 +139,7 @@ export async function apply(ctx: Context, config: McpSupporConfig = {}): Promise
       await Promise.all([...mounted.values()].map(async (entry) => { await entry.fiber.dispose() }))
       mounted.clear()
     }
-  }, 'mcp-suppor.live-servers')
+  }, 'mcp-support.live-servers')
 
   await reconcile(settings.get().servers)
 }
