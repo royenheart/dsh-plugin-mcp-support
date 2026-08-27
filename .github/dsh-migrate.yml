@@ -1,0 +1,17 @@
+# Mechanical tests prove host behavior, usage, and UI against the target
+# @deepseek-ai/dsh-* packages. Skip LLM review when they pass; still run A/B/C
+# when they fail so a broken upgrade can be repaired.
+
+dshVersion: latest
+
+review:
+  policy: skip-if-mechanical-pass
+
+watch:
+  enabled: true
+
+issuePr:
+  language: en
+
+loop:
+  maxAttempts: 5

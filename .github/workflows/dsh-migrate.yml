@@ -41,6 +41,7 @@ jobs:
         with:
           dsh_version: ${{ inputs.dsh_version || github.event.client_payload.dsh_version }}
           workdir: .
+          config: .github/dsh-migrate.yml
           force: ${{ inputs.force || false }}
         env:
           DEEPSEEK_API_KEY_DSH_MIGRATE_BOT: ${{ secrets.DEEPSEEK_API_KEY_DSH_MIGRATE_BOT }}
