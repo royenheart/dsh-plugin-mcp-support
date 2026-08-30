@@ -1,5 +1,7 @@
 # @royenheart/dsh-plugin-mcp-support
 
+[![dsh](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Froyenheart%2Fdsh-plugin-mcp-support%2Frefs%2Fheads%2Fdsh-migrate%2Fstate%2Fbadge.json)](https://github.com/royenheart/dsh-plugin-mcp-support/tree/dsh-migrate/state)
+
 A thin, non-duplicating wrapper over the native dsh MCP bridge
 [`@deepseek-ai/dsh-mcp-client`](https://github.com/deepseek-ai/deepseek-harness).
 It makes MCP servers configurable through two layered sources:
