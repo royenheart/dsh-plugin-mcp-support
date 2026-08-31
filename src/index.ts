@@ -15,7 +15,6 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context, Fiber, Plugin } from '@deepseek-ai/cordis'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import z from '@deepseek-ai/schemastery'
 import * as mcpClient from '@deepseek-ai/dsh-mcp-client'
@@ -58,7 +57,7 @@ export const name = 'mcp-support'
 export const inject = ['settings', 'tools', 'webServer']
 
 /** Settings namespace (lowercase kebab-case). */
-export const SETTINGS_NAMESPACE = settingsNamespace('mcp-support')
+export const SETTINGS_NAMESPACE = 'mcp-support'
 
 /** Browser-facing status route (session-agnostic). */
 export const STATUS_ENDPOINT = '/plugins/@royenheart/dsh-plugin-mcp-support/status'
@@ -91,7 +90,7 @@ export async function apply(ctx: Context, config: McpSupportConfig = {}): Promis
   validateUniqueServerNames(composition)
 
   const settings = ctx.settings.register(
-    settingsNamespace('mcp-support'),
+    SETTINGS_NAMESPACE,
     SettingsSchema,
     { applies: 'live' },
   )

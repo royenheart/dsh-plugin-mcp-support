@@ -27,7 +27,9 @@ export default [
     format: ['esm'],
     platform: 'node',
     target: 'es2022',
-    dts: true,
+    // dts currently fails on dest 0.1.2: two schemastery copies
+    // (dsh-mcp-client vs the plugin) make exported schemas non-portable.
+    dts: false,
     clean: false,
     fixedExtension: false,
     deps: { neverBundle: hostExternal },

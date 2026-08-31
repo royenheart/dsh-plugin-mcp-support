@@ -6,7 +6,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { Context, Service } from '@deepseek-ai/cordis'
-import { SettingsProvider, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import {
@@ -95,7 +95,7 @@ async function bootWithServers(serverList) {
 
 test('empty config registers the mcp-support settings namespace', async () => {
   const ctx = await bootEmpty()
-  const value = ctx.settings.get(settingsNamespace('mcp-support'))
+  const value = ctx.settings.describe().find(entry => entry.ns === SETTINGS_NAMESPACE)?.value
   assert.deepEqual(value, { servers: [] })
   await ctx.fiber.dispose()
 })
