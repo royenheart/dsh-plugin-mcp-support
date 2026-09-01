@@ -61,8 +61,9 @@ dsh plugin --profile <profile-name> add link:/home/royenheart/projects/dsh-plugi
 `dsh plugin` reconciles `dsh.profile.bundles` from the installed package's
 `dsh.bundle` declaration, so no profile patch edit is needed either.
 
-Restart dsh. The plugin declares `inject: ['settings', 'tools']`, so it loads
-once both the dsh settings service and the native tool registry are available.
+Restart dsh. The plugin declares `inject: ['settings', 'tools', 'webServer']`,
+so it loads once the dsh settings service, the native tool registry, and the
+web route registry are all available.
 
 ## Composition config example
 
