@@ -7,7 +7,14 @@ function hostExternal(id: string): boolean {
   return id.startsWith('@deepseek-ai/') || id.startsWith('@cordisjs/')
 }
 
-/** Module-table externals the browser require answers (the web platform seed list). */
+/**
+ * Module-table externals the browser require answers (the web platform seed
+ * list). `@deepseek-ai/dsh-client-ui-renderer` and
+ * `@deepseek-ai/dsh-client-ui-conversation` are type-only in this bundle and
+ * are erased, so they are intentionally absent here: a value import would be
+ * inlined (duplicate identity) and must instead become an explicit
+ * `dsh.client.external` request.
+ */
 const BROWSER_EXTERNALS = [
   'react',
   'react/jsx-runtime',
@@ -15,9 +22,6 @@ const BROWSER_EXTERNALS = [
   'react-dom/client',
   '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-client-runtime',
-  '@deepseek-ai/dsh-client-ui-conversation',
-  '@deepseek-ai/dsh-client-ui-primitives',
 ]
 
 export default [
@@ -27,9 +31,9 @@ export default [
     format: ['esm'],
     platform: 'node',
     target: 'es2022',
-    // dts currently fails on dest 0.1.2: two schemastery copies
-    // (dsh-mcp-client vs the plugin) make exported schemas non-portable.
-    dts: false,
+    // dts works against the 0.1.2-alpha.3 dependency set, where every
+    // harness package resolves to the same schemastery copy.
+    dts: true,
     clean: false,
     fixedExtension: false,
     deps: { neverBundle: hostExternal },

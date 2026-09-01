@@ -15,6 +15,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context, Fiber, Plugin } from '@deepseek-ai/cordis'
+import type { SettingsNamespace, SettingsScope } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import z from '@deepseek-ai/schemastery'
 import * as mcpClient from '@deepseek-ai/dsh-mcp-client'
@@ -26,7 +27,7 @@ import {
   SettingsSchema,
   validateUniqueServerNames,
 } from './core/config.ts'
-import type { McpServerConfig, McpSupportConfig } from './core/config.ts'
+import type { McpServerConfig, McpSupportConfig, McpSupportSettings } from './core/config.ts'
 import { summarizeServerStatus } from './core/status.ts'
 import type { McpServerStatus } from './core/status.ts'
 
@@ -57,7 +58,7 @@ export const name = 'mcp-support'
 export const inject = ['settings', 'tools', 'webServer']
 
 /** Settings namespace (lowercase kebab-case). */
-export const SETTINGS_NAMESPACE = 'mcp-support'
+export const SETTINGS_NAMESPACE = 'mcp-support' as SettingsNamespace
 
 /** Browser-facing status route (session-agnostic). */
 export const STATUS_ENDPOINT = '/plugins/@royenheart/dsh-plugin-mcp-support/status'
@@ -89,10 +90,16 @@ export async function apply(ctx: Context, config: McpSupportConfig = {}): Promis
   const composition = normalizeServerConfigs(config.servers)
   validateUniqueServerNames(composition)
 
-  const settings = ctx.settings.register(
+  const settings: SettingsScope<McpSupportSettings> = ctx.settings.register(
     SETTINGS_NAMESPACE,
     SettingsSchema,
-    { applies: 'live' },
+    {
+      applies: 'live',
+      // The persisted section has the same uniqueness contract as the
+      // composition list; refuse a duplicate-name write at the settings seam
+      // instead of storing a section that can never reconcile.
+      validate: (value) => validateUniqueServerNames(value.servers),
+    },
   )
 
   const mounted = new Map<string, MountedServer>()
@@ -167,7 +174,7 @@ export async function apply(ctx: Context, config: McpSupportConfig = {}): Promis
       },
     })
 
-    const stop = settings.watch((next) => reconcile(next.servers))
+    const stop = settings.watch((next: McpSupportSettings) => reconcile(next.servers))
     return async () => {
       disposed = true
       stop()

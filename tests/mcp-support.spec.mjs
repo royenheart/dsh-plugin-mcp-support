@@ -125,6 +125,22 @@ test('duplicate serverName in composition throws a clear error', async () => {
   )
 })
 
+test('settings writes with duplicate serverName are refused at the settings seam', async () => {
+  const ctx = await bootEmpty()
+  await assert.rejects(
+    ctx.settings.update(SETTINGS_NAMESPACE, {
+      servers: [
+        { transport: 'stdio', serverName: 'dup', command: 'node a' },
+        { transport: 'stdio', serverName: 'dup', command: 'node b' },
+      ],
+    }),
+    /duplicate serverName/,
+  )
+  const value = ctx.settings.describe().find((entry) => entry.ns === SETTINGS_NAMESPACE)?.value
+  assert.deepEqual(value, { servers: [] })
+  await ctx.fiber.dispose()
+})
+
 test('normalizeServerConfig accepts stdio and fills defaults', () => {
   const config = normalizeServerConfig({
     transport: 'stdio',
