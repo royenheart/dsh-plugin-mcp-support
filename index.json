@@ -1,0 +1,351 @@
+{
+  "schema": 1,
+  "generatedFor": {
+    "dsh": "dsh-v0.1.6-alpha.1",
+    "plugin": "@royenheart/dsh-plugin-mcp-support"
+  },
+  "framework": "playwright",
+  "features": [
+    {
+      "id": "status-tab",
+      "surface": "web-client",
+      "entry": "Session header view-tab row in the shipped `web` profile; the tab labelled `mcp` that the plugin's browser half registers",
+      "input": "Open the tokenized `dsh web` URL in Chromium, dismiss the first-run dialogs, choose a workspace in the directory picker, commit one composer turn, then read the tab row without selecting the tab",
+      "expect": "An `mcp` tab exists immediately to the right of the Trajectory tab, in one non-overlapping row inside the viewport; selecting it renders the status page heading",
+      "checks": [
+        "aria",
+        "text",
+        "geometry:order",
+        "geometry:overflow",
+        "console"
+      ],
+      "test": "e2e/specs/status-tab.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "status-empty-state",
+      "surface": "web-client",
+      "entry": "The `mcp` tab with no effective servers configured",
+      "input": "Boot a profile whose composition list is empty and whose settings section is empty, open the `mcp` tab",
+      "expect": "The page shows the heading `MCP 状态`, the `刷新` control, and the exact text `No MCP servers configured.` with no rows and no overflow of its own box",
+      "checks": [
+        "aria",
+        "text",
+        "geometry:overflow",
+        "console"
+      ],
+      "test": "e2e/specs/status-tab.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "status-refresh",
+      "surface": "web-client",
+      "entry": "The `刷新` button in the MCP status page header",
+      "input": "Open the `mcp` tab and click `刷新`",
+      "expect": "A new GET to the status route is issued and the view settles on the same state without errors",
+      "checks": [
+        "aria",
+        "text",
+        "http",
+        "console"
+      ],
+      "test": "e2e/specs/status-tab.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "composition-server-list",
+      "surface": "web-client",
+      "entry": "The plugin entry's `servers` list (profile patch row `mcp-support`), documented in README \"Composition config example\"",
+      "input": "Configure three composition servers (two stdio fixtures and one streamable-http fixture) and open the `mcp` tab",
+      "expect": "All three render in configured order with the right transport, mounted state, no overlap, no clipped names, and the route payload matches the visible list",
+      "checks": [
+        "aria",
+        "text",
+        "geometry:order",
+        "geometry:overflow",
+        "http",
+        "console"
+      ],
+      "test": "e2e/specs/composition-servers.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "stdio-mount",
+      "surface": "web-client",
+      "entry": "A `transport: stdio` server entry (composition or settings)",
+      "input": "Let the plugin mount the native bridge for a stdio fixture that logs its lifecycle to a marker file",
+      "expect": "The fixture process starts and receives `initialize`, `notifications/initialized` and `tools/list`, proving the bridge spawned it and discovered tools",
+      "checks": [
+        "fs-marker",
+        "text",
+        "console"
+      ],
+      "test": "e2e/specs/composition-servers.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "streamable-http-mount",
+      "surface": "web-client",
+      "entry": "A `transport: streamable-http` server entry with `url` and `headers`",
+      "input": "Point the plugin at a harness-owned streamable-http MCP fixture and let it connect",
+      "expect": "The HTTP fixture receives `initialize` and `tools/list` over HTTP and the row renders as mounted with transport `streamable-http`",
+      "checks": [
+        "fs-marker",
+        "text",
+        "http",
+        "console"
+      ],
+      "test": "e2e/specs/composition-servers.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "mounted-state",
+      "surface": "web-client",
+      "entry": "The per-row mounted indicator on the MCP status page",
+      "input": "Render a status page containing a live server and a server whose mount rejected",
+      "expect": "Each row reports `mounted` or `not mounted` consistently with the status route's `mounted` field",
+      "checks": [
+        "aria",
+        "text",
+        "http",
+        "console"
+      ],
+      "test": "e2e/specs/composition-servers.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "settings-namespace-merge",
+      "surface": "web-client",
+      "entry": "The persisted `mcp-support` settings namespace in `$DSH_HOME/settings.yaml`, documented in README \"Settings example\"",
+      "input": "Configure composition `[alpha, shared]` plus a settings section that redefines `shared` with another transport and appends `gamma`",
+      "expect": "`shared` keeps its composition position but carries the settings transport, `gamma` is appended last, and the overridden composition server is never spawned",
+      "checks": [
+        "text",
+        "geometry:order",
+        "http",
+        "fs-marker",
+        "console"
+      ],
+      "test": "e2e/specs/settings-namespace.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "live-settings-resync",
+      "surface": "web-client",
+      "entry": "Editing `$DSH_HOME/settings.yaml` while dsh is running (the `applies: 'live'` settings registration)",
+      "input": "Rewrite the settings section to add a server, refresh the view, then rewrite it to remove the server and refresh again",
+      "expect": "The added server mounts a real child process and appears in the list; after removal its row disappears and the host payload contains only the composition server",
+      "checks": [
+        "text",
+        "http",
+        "fs-marker",
+        "aria",
+        "console"
+      ],
+      "test": "e2e/specs/settings-namespace.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "mount-error-row",
+      "surface": "web-client",
+      "entry": "A server whose mount rejects (only possible with `failOnStartupError: true`)",
+      "input": "Introduce a dead stdio command with `failOnStartupError: true` through a live settings write while a healthy server keeps running",
+      "expect": "The failed row reads `not mounted` and carries the native bridge's error message, the healthy row stays mounted, the text wraps inside its row, and a refresh reproduces the same state",
+      "checks": [
+        "text",
+        "http",
+        "geometry:overflow",
+        "console"
+      ],
+      "test": "e2e/specs/mount-error.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "fail-on-startup-error",
+      "surface": "headless",
+      "entry": "The `failOnStartupError` field of a server entry (documented default `false`)",
+      "input": "Boot the headless profile twice: once with a dead server at the default `false`, once with `true`",
+      "expect": "With `false` the plugin row still activates and the healthy sibling mounts; with `true` the mount rejects and is reported as a mount error instead of silently retrying",
+      "checks": [
+        "cli-output",
+        "cli-exit",
+        "fs-marker",
+        "text"
+      ],
+      "test": "e2e/specs/headless-boot.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "status-route",
+      "surface": "web-client",
+      "entry": "`GET /plugins/@royenheart/dsh-plugin-mcp-support/status`, the session-agnostic endpoint the browser half reads",
+      "input": "Issue GET, HEAD, POST, PUT, DELETE and a longer sub-path from the browser context",
+      "expect": "GET answers `200 {\"ok\":true,\"servers\":[…]}` with exactly `serverName`/`transport`/`mounted`, HEAD answers with no body, other methods answer `405 {\"ok\":false,\"error\":\"method not allowed\"}`, and the route matches exactly (sub-path 404)",
+      "checks": [
+        "http",
+        "console"
+      ],
+      "test": "e2e/specs/status-route.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "headless-activation",
+      "surface": "headless",
+      "entry": "`dsh --profile headless <task>` with the plugin installed; the headless profile mounts no `webServer` service",
+      "input": "Boot the headless profile with a stdio fixture configured and run a task",
+      "expect": "The plugin row activates without waiting for `webServer` (no pending/did-not-activate warning), mounts the fixture, and the run reaches the model call instead of stalling",
+      "checks": [
+        "cli-output",
+        "cli-exit",
+        "fs-marker"
+      ],
+      "test": "e2e/specs/headless-boot.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "config-union-stdio",
+      "surface": "cli",
+      "entry": "The `stdio` half of the native `@deepseek-ai/dsh-mcp-client` config union (`command`, `args`, `env`, `cwd`, `toolCallTimeoutMs`, `failOnStartupError`, `maxInstructionBytes`, `reconnect`)",
+      "input": "Boot a profile with every documented stdio field set and let the fixture connect",
+      "expect": "The config is accepted, the fixture receives the `env` marker and runs from the configured `cwd`, and tool discovery completes",
+      "checks": [
+        "cli-output",
+        "cli-exit",
+        "fs-marker"
+      ],
+      "test": "e2e/specs/headless-boot.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "config-union-streamable-http",
+      "surface": "cli",
+      "entry": "The `streamable-http` half of the native config union (`url`, `headers`, `toolCallTimeoutMs`, `failOnStartupError`, `maxInstructionBytes`, `reconnect`)",
+      "input": "Configure HTTP entries in both the composition list (with `headers`) and the settings section (with `reconnect` disabled) and boot",
+      "expect": "Both forms are accepted; the composition entry completes a real HTTP handshake and the settings entry renders with transport `streamable-http`",
+      "checks": [
+        "cli-output",
+        "http",
+        "text",
+        "fs-marker"
+      ],
+      "test": "e2e/specs/composition-servers.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "config-validation",
+      "surface": "cli",
+      "entry": "Invalid `servers` entries in the composition config",
+      "input": "Boot with a `serverName` that violates `[A-Za-z0-9_-]{1,32}`, then with a duplicate `serverName` in the composition list",
+      "expect": "The boot fails with the schemastery union error for the invalid name and with `duplicate serverName \"…\"` for the duplicate; neither is accepted silently",
+      "checks": [
+        "cli-output",
+        "cli-exit"
+      ],
+      "test": "e2e/specs/headless-boot.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "settings-validation",
+      "surface": "headless",
+      "entry": "A persisted `mcp-support` settings section that repeats a `serverName`",
+      "input": "Boot with a `settings.yaml` whose `mcp-support.servers` list contains the same name twice",
+      "expect": "The section is refused at the settings seam with the same duplicate-name message, so a list that can never reconcile is not stored or mounted",
+      "checks": [
+        "cli-output",
+        "cli-exit"
+      ],
+      "test": "e2e/specs/headless-boot.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "bundle-wiring",
+      "surface": "cli",
+      "entry": "The package's `dsh.bundle.patch` (`cordis.patch.yml`) declaring the `mcp-support` host row",
+      "input": "Compose the headless profile with `--dump-config`",
+      "expect": "The composed tree contains the `mcp-support` row pointing at `@royenheart/dsh-plugin-mcp-support` and carries the composition `servers` config from the profile patch",
+      "checks": [
+        "cli-output",
+        "cli-exit"
+      ],
+      "test": "e2e/specs/headless-boot.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "install-script",
+      "surface": "cli",
+      "entry": "`python3 install.py install|uninstall --profile <name> --home <dsh home>`, documented in README \"Install into a profile\"",
+      "input": "Run uninstall twice and install twice against a cloned profile, then boot the freshly installed profile in Chromium",
+      "expect": "Both commands are idempotent and report what they did, the link/dependency/bundle entries appear and disappear together, the profile's own `cordis.patch.yml` is never modified, and the installed profile serves the `mcp` tab with the empty state",
+      "checks": [
+        "cli-output",
+        "cli-exit",
+        "aria",
+        "text",
+        "console"
+      ],
+      "test": "e2e/specs/install-cli.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    },
+    {
+      "id": "dev-surface",
+      "surface": "cli",
+      "entry": "`npm run typecheck`, `npm run build`, `npm test`, documented in README \"Develop\"",
+      "input": "Run all three scripts in the disposable package copy",
+      "expect": "All three exit 0; the build produces `lib/index.js` (host) and `lib/client.js` (browser) and the node:test suite reports zero failures",
+      "checks": [
+        "cli-output",
+        "cli-exit"
+      ],
+      "test": "e2e/specs/dev-surface.spec.ts",
+      "state": "passing",
+      "lastPassedFor": "dsh-v0.1.6-alpha.1"
+    }
+  ],
+  "files": [
+    "e2e/.gitignore",
+    "e2e/README.md",
+    "e2e/fixtures/mcp-http-server.mjs",
+    "e2e/fixtures/mcp-stdio-server.mjs",
+    "e2e/global-setup.ts",
+    "e2e/harness/app.ts",
+    "e2e/harness/config.ts",
+    "e2e/harness/defined.ts",
+    "e2e/harness/dsh-home.ts",
+    "e2e/harness/dsh-process.ts",
+    "e2e/harness/mcp-fixture.ts",
+    "e2e/harness/paths.ts",
+    "e2e/harness/poll.ts",
+    "e2e/harness/scenario.ts",
+    "e2e/harness/test.ts",
+    "e2e/package.json",
+    "e2e/playwright.config.ts",
+    "e2e/specs/composition-servers.spec.ts",
+    "e2e/specs/dev-surface.spec.ts",
+    "e2e/specs/headless-boot.spec.ts",
+    "e2e/specs/install-cli.spec.ts",
+    "e2e/specs/mount-error.spec.ts",
+    "e2e/specs/settings-namespace.spec.ts",
+    "e2e/specs/status-route.spec.ts",
+    "e2e/specs/status-tab.spec.ts",
+    "e2e/tsconfig.json"
+  ]
+}

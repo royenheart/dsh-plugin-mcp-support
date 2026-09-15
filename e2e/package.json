@@ -1,0 +1,18 @@
+{
+  "name": "@royenheart/dsh-plugin-mcp-support-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Playwright/Chromium end-to-end suite for @royenheart/dsh-plugin-mcp-support against dsh-v0.1.6-alpha.1",
+  "scripts": {
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "e2e:report": "playwright show-report test-results/html",
+    "e2e:typecheck": "tsc --noEmit -p tsconfig.json",
+    "e2e:install-browser": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
