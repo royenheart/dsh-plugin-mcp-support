@@ -115,6 +115,21 @@ test('empty config registers the status route', async () => {
   await ctx.fiber.dispose()
 })
 
+test('activates and mounts without a webServer service (headless profile)', async () => {
+  const ctx = new Context()
+  await ctx.plugin({ name: 'memory-settings', inject: [], apply: (c) => { c.plugin(MemorySettings) } })
+  await ctx.plugin(SystemPrompt)
+  await ctx.plugin(ToolRuntime)
+  await ctx.plugin({ name, inject, apply }, { servers: [fixtureServerConfig('headless')] })
+
+  assert.equal(ctx.get('webServer'), undefined)
+  const value = ctx.settings.describe().find(entry => entry.ns === SETTINGS_NAMESPACE)?.value
+  assert.deepEqual(value, { servers: [] })
+  const names = ctx.tools.schemas().map(schema => schema.name)
+  assert.ok(names.includes('mcp__headless__echo'), `tools were ${names.join(', ')}`)
+  await ctx.fiber.dispose()
+})
+
 test('duplicate serverName in composition throws a clear error', async () => {
   await assert.rejects(
     bootWithServers([
@@ -155,6 +170,7 @@ test('normalizeServerConfig accepts stdio and fills defaults', () => {
   assert.equal(config.cwd, '')
   assert.equal(config.toolCallTimeoutMs, 60_000)
   assert.equal(config.failOnStartupError, false)
+  assert.equal(config.maxInstructionBytes, 32_768)
 })
 
 test('normalizeServerConfig accepts streamable-http and fills defaults', () => {
@@ -169,6 +185,17 @@ test('normalizeServerConfig accepts streamable-http and fills defaults', () => {
   assert.deepEqual(config.headers, {})
   assert.equal(config.toolCallTimeoutMs, 60_000)
   assert.equal(config.failOnStartupError, false)
+  assert.equal(config.maxInstructionBytes, 32_768)
+})
+
+test('normalizeServerConfig preserves an explicit maxInstructionBytes', () => {
+  const config = normalizeServerConfig({
+    transport: 'stdio',
+    serverName: 'capped',
+    command: 'node',
+    maxInstructionBytes: 4_096,
+  })
+  assert.equal(config.maxInstructionBytes, 4_096)
 })
 
 test('normalizeServerConfig rejects invalid serverName', () => {

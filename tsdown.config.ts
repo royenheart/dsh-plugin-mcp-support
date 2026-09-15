@@ -31,8 +31,8 @@ export default [
     format: ['esm'],
     platform: 'node',
     target: 'es2022',
-    // dts works against the 0.1.2-alpha.3 dependency set, where every
-    // harness package resolves to the same schemastery copy.
+    // dts works against the pinned 0.1.6-alpha.1 harness dependency set, where
+    // every harness package resolves to the same schemastery copy.
     dts: true,
     clean: false,
     fixedExtension: false,

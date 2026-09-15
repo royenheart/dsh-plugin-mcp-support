@@ -17,6 +17,12 @@ export const MAX_TIMER_DELAY_MS = 2_147_483_647
 /** Default per-tool-call timeout used by the native bridge. */
 export const DEFAULT_TOOL_CALL_TIMEOUT_MS = 60_000
 
+/**
+ * Default maximum UTF-8 bytes of attributed server instructions, mirroring the
+ * native bridge's `DEFAULT_MAX_INSTRUCTION_BYTES`.
+ */
+export const DEFAULT_MAX_INSTRUCTION_BYTES = 32_768
+
 /** Reconnect policy, defaults mirrored from the native bridge. */
 export interface ReconnectConfig {
   enabled: boolean
@@ -35,6 +41,7 @@ export interface StdioServerConfig {
   cwd: string
   toolCallTimeoutMs: number
   failOnStartupError: boolean
+  maxInstructionBytes?: number
   reconnect?: ReconnectConfig
 }
 
@@ -46,6 +53,7 @@ export interface StreamableHttpServerConfig {
   headers: Record<string, string>
   toolCallTimeoutMs: number
   failOnStartupError: boolean
+  maxInstructionBytes?: number
   reconnect?: ReconnectConfig
 }
 
@@ -80,6 +88,7 @@ export const ServerConfig = z.union([
     cwd: z.string().default(''),
     toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
     failOnStartupError: z.boolean().default(false),
+    maxInstructionBytes: z.number().step(1).min(1).default(DEFAULT_MAX_INSTRUCTION_BYTES),
     reconnect: Reconnect,
   }),
   z.object({
@@ -89,6 +98,7 @@ export const ServerConfig = z.union([
     headers: z.dict(String).default({}),
     toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
     failOnStartupError: z.boolean().default(false),
+    maxInstructionBytes: z.number().step(1).min(1).default(DEFAULT_MAX_INSTRUCTION_BYTES),
     reconnect: Reconnect,
   }),
 ]) as unknown as z<McpServerConfig>
