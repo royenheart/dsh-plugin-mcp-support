@@ -1,23 +1,25 @@
 /**
- * Minimal MCP stdio server for plugin e2e. Speaks the official SDK protocol
- * so `@deepseek-ai/dsh-mcp-client` can discover and call a real tool.
+ * Minimal MCP stdio server for plugin e2e. Speaks the official v2 server SDK
+ * (`@modelcontextprotocol/server`, 2026-07-28 era) so
+ * `@deepseek-ai/dsh-mcp-client` can discover and call a real tool.
  */
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { McpServer } from '@modelcontextprotocol/server'
+import { serveStdio } from '@modelcontextprotocol/server/stdio'
 import { z } from 'zod'
 
-const server = new McpServer(
-  { name: 'mcp-support-fixture', version: '1.0.0' },
-  { capabilities: { tools: {} } },
-)
+serveStdio(() => {
+  const server = new McpServer(
+    { name: 'mcp-support-fixture', version: '1.0.0' },
+    { capabilities: { tools: {} } },
+  )
 
-server.registerTool('echo', {
-  title: 'Echo',
-  description: 'Returns the given text.',
-  inputSchema: { text: z.string().describe('Text to echo') },
-}, async args => ({
-  content: [{ type: 'text', text: `echo:${args.text}` }],
-}))
+  server.registerTool('echo', {
+    title: 'Echo',
+    description: 'Returns the given text.',
+    inputSchema: z.object({ text: z.string().describe('Text to echo') }),
+  }, async args => ({
+    content: [{ type: 'text', text: `echo:${args.text}` }],
+  }))
 
-const transport = new StdioServerTransport()
-await server.connect(transport)
+  return server
+})

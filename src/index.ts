@@ -54,8 +54,17 @@ export type { McpServerStatus } from './core/status.ts'
 /** Cordis plugin name. */
 export const name = 'mcp-support'
 
-/** Required services: persisted settings + the native tool registry + the web route registry. */
-export const inject = ['settings', 'tools', 'webServer']
+/**
+ * Required services: persisted settings + the native tool registry.
+ *
+ * The web route registry (`webServer`) is deliberately not required: MCP
+ * mounting works in every profile, while only profiles that mount the Web app
+ * (web, and any custom profile that includes `@deepseek-ai/dsh-web-app`) can
+ * serve the browser status route. The route is registered lazily through
+ * `ctx.inject` below, so a headless/acp/sdk profile no longer keeps this row
+ * pending forever on a service it does not provide.
+ */
+export const inject = ['settings', 'tools']
 
 /** Settings namespace (lowercase kebab-case). */
 export const SETTINGS_NAMESPACE = 'mcp-support' as SettingsNamespace
@@ -157,28 +166,34 @@ export async function apply(ctx: Context, config: McpSupportConfig = {}): Promis
     }
   }
 
-  ctx.effect(() => {
-    const disposeStatusRoute = ctx.webServer.register({
-      kind: 'exact',
-      path: STATUS_ENDPOINT,
-      handler: (req: IncomingMessage, res: ServerResponse) => {
-        if (req.method !== 'GET' && req.method !== 'HEAD') {
-          sendJson(res, 405, { ok: false, error: 'method not allowed' })
-          return
-        }
-        const effective = mergeServers(composition, settings.get().servers)
-        sendJson(res, 200, {
-          ok: true,
-          servers: summarizeServerStatus(effective, new Set(mounted.keys()), mountErrors),
-        })
-      },
+  function handleStatus(req: IncomingMessage, res: ServerResponse): void {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      sendJson(res, 405, { ok: false, error: 'method not allowed' })
+      return
+    }
+    const effective = mergeServers(composition, settings.get().servers)
+    sendJson(res, 200, {
+      ok: true,
+      servers: summarizeServerStatus(effective, new Set(mounted.keys()), mountErrors),
     })
+  }
 
+  // Optional web layer: register the status route when a `webServer` service
+  // exists, and let the child fiber drop it again if that service goes away.
+  // Not awaited on purpose — awaiting would re-create the hard dependency this
+  // plugin must not have on profiles without the Web app.
+  ctx.inject(['webServer'], (webCtx) => {
+    webCtx.effect(
+      () => webCtx.webServer.register({ kind: 'exact', path: STATUS_ENDPOINT, handler: handleStatus }),
+      'mcp-support.status-route',
+    )
+  })
+
+  ctx.effect(() => {
     const stop = settings.watch((next: McpSupportSettings) => reconcile(next.servers))
     return async () => {
       disposed = true
       stop()
-      disposeStatusRoute()
       await Promise.all([...mounted.values()].map(async (entry) => { await entry.fiber.dispose() }))
       mounted.clear()
     }

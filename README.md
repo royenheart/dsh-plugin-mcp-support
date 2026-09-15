@@ -27,8 +27,8 @@ lib/                  # built host + client entries (npm run build)
 ## Web status view
 
 The client half registers an `mcp` tab in the session header's view-tab row,
-immediately to the right of the `轨迹` (trajectory) tab and before any later
-tabs such as `技能`. Selecting it fetches
+immediately to the right of the `轨迹` (trajectory) tab and ahead of any tab a
+later plugin registers with a higher `order`. Selecting it fetches
 `/plugins/@royenheart/dsh-plugin-mcp-support/status` and shows each effective
 MCP server with its transport, mounted state, and the last mount error when
 present. No servers configured renders "No MCP servers configured."
@@ -61,9 +61,12 @@ dsh plugin --profile <profile-name> add link:/home/royenheart/projects/dsh-plugi
 `dsh plugin` reconciles `dsh.profile.bundles` from the installed package's
 `dsh.bundle` declaration, so no profile patch edit is needed either.
 
-Restart dsh. The plugin declares `inject: ['settings', 'tools', 'webServer']`,
-so it loads once the dsh settings service, the native tool registry, and the
-web route registry are all available.
+Restart dsh. The plugin declares `inject: ['settings', 'tools']`, so it loads
+once the dsh settings service and the native tool registry are available — in
+any profile. The browser status route is registered only when the profile also
+provides the `webServer` service (the shipped `web` profile mounts
+`@deepseek-ai/dsh-web-app`, which does); profiles without it (headless, acp,
+sdk) still mount and re-sync MCP servers, they simply have no status tab.
 
 ## Composition config example
 
@@ -105,7 +108,7 @@ entry; settings-only servers are appended after composition servers.
 The namespace is `mcp-support`. (If `settings.yaml` still carries the key from
 an earlier misspelled build, rename that key to `mcp-support` once.)
 
-In the profile's settings document (`settings.yaml`):
+In the harness home's settings document (`$DSH_HOME/settings.yaml`):
 
 ```yaml
 mcp-support:
@@ -142,6 +145,7 @@ union.
 | `cwd`               | no       | `''`    | child working directory |
 | `toolCallTimeoutMs` | no       | `60000` | per-tool-call timeout |
 | `failOnStartupError`| no       | `false` | reject plugin activation on initial connection failure |
+| `maxInstructionBytes` | no       | `32768` | max UTF-8 bytes of attributed server instructions; an oversized value rejects the connection |
 | `reconnect`         | no       | native defaults | `enabled`, `initialDelayMs`, `maxDelayMs`, `maxAttempts` |
 
 ### streamable-http
@@ -154,6 +158,7 @@ union.
 | `headers`           | no       | `{}`    | extra request headers |
 | `toolCallTimeoutMs` | no       | `60000` | per-tool-call timeout |
 | `failOnStartupError`| no       | `false` | reject plugin activation on initial connection failure |
+| `maxInstructionBytes` | no       | `32768` | max UTF-8 bytes of attributed server instructions; an oversized value rejects the connection |
 | `reconnect`         | no       | native defaults | `enabled`, `initialDelayMs`, `maxDelayMs`, `maxAttempts` |
 
 ## Develop
