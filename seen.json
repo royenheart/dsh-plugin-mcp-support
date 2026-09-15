@@ -1,9 +1,15 @@
 {
-  "tag": "dsh-v0.1.2-alpha.3",
-  "version": "0.1.2-alpha.3",
-  "recordedAt": "2026-09-01T13:54:12.276Z",
+  "tag": "dsh-v0.1.6-alpha.1",
+  "version": "0.1.6-alpha.1",
+  "recordedAt": "2026-09-15T14:05:12.128Z",
   "verified": {
     "tag": "dsh-v0.1.2-alpha.3",
     "version": "0.1.2-alpha.3"
+  },
+  "pending": {
+    "tag": "dsh-v0.1.6-alpha.1",
+    "version": "0.1.6-alpha.1",
+    "pr": 4,
+    "prUrl": "https://github.com/royenheart/dsh-plugin-mcp-support/pull/4"
   }
 }
