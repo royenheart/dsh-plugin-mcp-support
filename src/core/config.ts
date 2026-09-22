@@ -3,7 +3,7 @@
  *
  * Deliberately free of cordis imports so these functions stay trivially
  * unit-testable. The schema mirrors the native `@deepseek-ai/dsh-mcp-client`
- * `Config` union so the settings layer accepts exactly what the native bridge
+ * `Config` union so the plugin Config accepts exactly what the native bridge
  * accepts — the wrapper itself never re-implements connection logic.
  */
 import z from '@deepseek-ai/schemastery'
@@ -16,6 +16,9 @@ export const MAX_TIMER_DELAY_MS = 2_147_483_647
 
 /** Default per-tool-call timeout used by the native bridge. */
 export const DEFAULT_TOOL_CALL_TIMEOUT_MS = 60_000
+
+/** Default UTF-8 byte limit for attributed server instructions, mirrored from the native bridge. */
+export const DEFAULT_MAX_INSTRUCTION_BYTES = 32_768
 
 /** Reconnect policy, defaults mirrored from the native bridge. */
 export interface ReconnectConfig {
@@ -35,6 +38,7 @@ export interface StdioServerConfig {
   cwd: string
   toolCallTimeoutMs: number
   failOnStartupError: boolean
+  maxInstructionBytes: number
   reconnect?: ReconnectConfig
 }
 
@@ -46,18 +50,14 @@ export interface StreamableHttpServerConfig {
   headers: Record<string, string>
   toolCallTimeoutMs: number
   failOnStartupError: boolean
+  maxInstructionBytes: number
   reconnect?: ReconnectConfig
 }
 
 /** One normalized MCP server config, discriminated on `transport`. */
 export type McpServerConfig = StdioServerConfig | StreamableHttpServerConfig
 
-/** Resolved shape of the persisted `mcp-support` settings namespace. */
-export interface McpSupportSettings {
-  servers: McpServerConfig[]
-}
-
-/** Composition-time plugin config: the optional initial server list. */
+/** Compose-time plugin config: the optional initial server list. */
 export interface McpSupportConfig {
   servers?: McpServerConfig[]
 }
@@ -80,6 +80,7 @@ export const ServerConfig = z.union([
     cwd: z.string().default(''),
     toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
     failOnStartupError: z.boolean().default(false),
+    maxInstructionBytes: z.number().step(1).min(1).default(DEFAULT_MAX_INSTRUCTION_BYTES),
     reconnect: Reconnect,
   }),
   z.object({
@@ -89,18 +90,32 @@ export const ServerConfig = z.union([
     headers: z.dict(String).default({}),
     toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
     failOnStartupError: z.boolean().default(false),
+    maxInstructionBytes: z.number().step(1).min(1).default(DEFAULT_MAX_INSTRUCTION_BYTES),
     reconnect: Reconnect,
   }),
 ]) as unknown as z<McpServerConfig>
 
-/** Schemastery schema for the persisted settings section. */
-export const SettingsSchema = z.object({
-  servers: z.array(ServerConfig).default([]),
-})
+/**
+ * Detach JSON-shaped input from the value it was read from.
+ *
+ * A volatile Config snapshot is deep-frozen, and Schemastery's dict
+ * validation writes each entry back into the dict it validates, so
+ * re-validating `env`/`headers` straight out of the snapshot throws
+ * "Cannot assign to read only property". The schema fills every default, so
+ * a detached copy carries the same result.
+ *
+ * @param input - raw server config value.
+ * @returns a mutable copy of every nested object and array.
+ */
+function detachConfig(input: unknown): unknown {
+  if (input === null || typeof input !== 'object') return input
+  if (Array.isArray(input)) return input.map(detachConfig)
+  return Object.fromEntries(Object.entries(input).map(([key, value]) => [key, detachConfig(value)]))
+}
 
 /** Normalize a single raw server config through the schema. */
 export function normalizeServerConfig(input: unknown): McpServerConfig {
-  return ServerConfig(input as McpServerConfig) as McpServerConfig
+  return ServerConfig(detachConfig(input) as McpServerConfig) as McpServerConfig
 }
 
 /** Normalize a raw server list; `undefined`/`null` means empty. */
