@@ -1,19 +1,21 @@
 /**
- * Host tests: config helpers, status HTTP, live native mcp-client mount,
- * settings-driven remount, and fail-on-startup.
+ * Host tests: config helpers, the volatile settings seam, status HTTP, live
+ * native mcp-client mounts, profile-layer re-sync, and fail-on-startup.
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { Context, Service } from '@deepseek-ai/cordis'
-import { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import {
   apply,
+  Config,
   inject,
   name,
   normalizeServerConfig,
+  readServerList,
+  selectEffectiveServers,
   servers,
   SETTINGS_NAMESPACE,
   STATUS_ENDPOINT,
@@ -34,13 +36,17 @@ function fixtureServerConfig(serverName = 'fixture') {
   }
 }
 
-class MemorySettings extends SettingsProvider {
-  doc = {}
-  get writable() { return true }
-  load() { return Promise.resolve(structuredClone(this.doc)) }
-  persist(ns, section) {
-    this.doc[ns] = structuredClone(section)
-    return Promise.resolve()
+class MockConfigEditor extends Service {
+  layers = []
+  constructor(ctx) {
+    super(ctx, 'configEditor')
+  }
+  configuration() {
+    return this.layers.map(layer => ({
+      entry: { options: { id: layer.entryId } },
+      inherited: layer.inherited,
+      override: layer.override,
+    }))
   }
 }
 
@@ -73,35 +79,104 @@ function invokeRoute(route, method = 'GET') {
   return { status, json: body === '' ? undefined : JSON.parse(body) }
 }
 
-async function bootEmpty() {
+async function mountWebServer(ctx) {
+  await ctx.plugin({ name: 'mock-webserver', inject: [], apply: (c) => { c.plugin(MockWebServer) } })
+}
+
+async function boot({ serverList = [], rows = [], webServer = true } = {}) {
   const ctx = new Context()
-  await ctx.plugin({ name: 'memory-settings', inject: [], apply: (c) => { c.plugin(MemorySettings) } })
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
-  await ctx.plugin({ name: 'mock-webserver', inject: [], apply: (c) => { c.plugin(MockWebServer) } })
-  await ctx.plugin({ name, inject, apply }, { servers: [] })
+  if (webServer) await mountWebServer(ctx)
+  await ctx.plugin({ name: 'mock-config-editor', inject: [], apply: (c) => { c.plugin(MockConfigEditor) } })
+  const editor = ctx.get('configEditor')
+  editor.layers = rows
+  await ctx.plugin({ name, inject, apply, Config }, { servers: serverList })
   return ctx
 }
 
-async function bootWithServers(serverList) {
-  const ctx = new Context()
-  await ctx.plugin({ name: 'memory-settings', inject: [], apply: (c) => { c.plugin(MemorySettings) } })
-  await ctx.plugin(SystemPrompt)
-  await ctx.plugin(ToolRuntime)
-  await ctx.plugin({ name: 'mock-webserver', inject: [], apply: (c) => { c.plugin(MockWebServer) } })
-  await ctx.plugin({ name, inject, apply }, { servers: serverList })
-  return ctx
+async function waitFor(predicate, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (predicate()) return true
+    await sleep(50)
+  }
+  return predicate()
 }
 
-test('empty config registers the mcp-support settings namespace', async () => {
-  const ctx = await bootEmpty()
-  const value = ctx.settings.describe().find(entry => entry.ns === SETTINGS_NAMESPACE)?.value
-  assert.deepEqual(value, { servers: [] })
-  await ctx.fiber.dispose()
+test('plugin Config exposes servers as a volatile live field', () => {
+  const serversField = Config.dict.servers
+  assert.equal(serversField.meta.volatile, true)
+  assert.deepEqual(serversField.meta.default, [])
+})
+
+test('readServerList unwraps the volatile reference and plain values', () => {
+  const parsed = Config({ servers: [fixtureServerConfig('live')] })
+  assert.deepEqual(readServerList(parsed).map(server => server.serverName), ['live'])
+  assert.deepEqual(
+    readServerList({ servers: [fixtureServerConfig('live')] }).map(server => server.serverName),
+    ['live'],
+  )
+})
+
+// Regression: a volatile snapshot is deep-frozen, and Schemastery's dict
+// validation writes into the dict it validates, so a non-empty `env` or
+// `headers` read straight out of the snapshot used to reject a valid config.
+test('readServerList accepts a frozen volatile snapshot with env and headers', () => {
+  const stdio = Config({
+    servers: [{
+      transport: 'stdio',
+      serverName: 'stdio-env',
+      command: 'node',
+      args: ['--flag'],
+      env: { MCP_TOKEN: 'secret' },
+    }],
+  })
+  assert.equal(Object.isFrozen(stdio.servers.get()[0].env), true)
+  const [stdioServer] = readServerList(stdio)
+  assert.equal(stdioServer.serverName, 'stdio-env')
+  assert.deepEqual(stdioServer.env, { MCP_TOKEN: 'secret' })
+  assert.deepEqual(stdioServer.args, ['--flag'])
+
+  const http = Config({
+    servers: [{
+      transport: 'streamable-http',
+      serverName: 'http-headers',
+      url: 'http://localhost:3000/mcp',
+      headers: { Authorization: 'Bearer secret' },
+    }],
+  })
+  assert.equal(Object.isFrozen(http.servers.get()[0].headers), true)
+  assert.deepEqual(readServerList(http)[0].headers, { Authorization: 'Bearer secret' })
+})
+
+test('selectEffectiveServers layers settings over composition keyed by serverName', () => {
+  const composition = [
+    { transport: 'stdio', serverName: 'comp-only', command: 'node a' },
+    { transport: 'stdio', serverName: 'overridden', command: 'node a' },
+  ]
+  const settings = [
+    { transport: 'stdio', serverName: 'overridden', command: 'node b' },
+    { transport: 'streamable-http', serverName: 'settings-only', url: 'http://localhost:3000/mcp' },
+  ]
+  const rows = [{ entryId: SETTINGS_NAMESPACE, inherited: { servers: composition }, override: { servers: settings } }]
+  const effective = selectEffectiveServers(SETTINGS_NAMESPACE, [], rows)
+  assert.deepEqual(effective.map(server => server.serverName), [
+    'comp-only',
+    'overridden',
+    'settings-only',
+  ])
+  assert.equal(effective.find(server => server.serverName === 'overridden').command, 'node b')
+  // No profile row for this entry: the resolved list is authoritative.
+  assert.deepEqual(
+    selectEffectiveServers(SETTINGS_NAMESPACE, [{ transport: 'stdio', serverName: 'resolved', command: 'node' }], [])
+      .map(server => server.serverName),
+    ['resolved'],
+  )
 })
 
 test('empty config registers the status route', async () => {
-  const ctx = await bootEmpty()
+  const ctx = await boot()
   const route = ctx.webServer.routes.find((entry) => entry.path === STATUS_ENDPOINT)
   assert.ok(route)
   assert.equal(route.kind, 'exact')
@@ -115,29 +190,97 @@ test('empty config registers the status route', async () => {
   await ctx.fiber.dispose()
 })
 
-test('duplicate serverName in composition throws a clear error', async () => {
-  await assert.rejects(
-    bootWithServers([
-      { transport: 'stdio', serverName: 'dup', command: 'node a' },
-      { transport: 'stdio', serverName: 'dup', command: 'node b' },
-    ]),
-    /duplicate serverName/,
-  )
+// Regression: the migration boot probe mounts `dsh-base` + `dsh-headless`,
+// which has no `webServer`. A required injection there left the entry pending
+// forever and failed the boot; the status route must ride an optional child.
+test('activates without a webServer and still mounts configured servers', async () => {
+  assert.ok(!inject.includes('webServer'))
+  const ctx = await boot({ serverList: [fixtureServerConfig('headless')], webServer: false })
+  assert.equal(ctx.get('webServer'), undefined)
+  assert.ok(ctx.tools.schemas().some(schema => schema.name === 'mcp__headless__echo'))
+  await ctx.fiber.dispose()
 })
 
-test('settings writes with duplicate serverName are refused at the settings seam', async () => {
-  const ctx = await bootEmpty()
+test('a webServer mounted after activation still receives the status route', async () => {
+  const ctx = await boot({ serverList: [], webServer: false })
+  assert.equal(ctx.get('webServer'), undefined)
+  await mountWebServer(ctx)
+  assert.ok(await waitFor(() => ctx.webServer.routes.some((entry) => entry.path === STATUS_ENDPOINT)))
+  const route = ctx.webServer.routes.find((entry) => entry.path === STATUS_ENDPOINT)
+  const response = invokeRoute(route, 'GET')
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.json.servers, [])
+  await ctx.fiber.dispose()
+})
+
+// Regression: `configEditor.configuration()` reports every profile row. Only
+// this plugin's own row may be interpolated — a sibling row's expression can
+// reference a service this plugin does not inject (the headless probe mounts
+// `headless-runner`, whose config reads `ctx.headlessStartup.task`) and
+// evaluating it here used to fail the boot.
+test('sibling profile rows with foreign !!js expressions do not break activation', async () => {
+  const ctx = await boot({
+    serverList: [fixtureServerConfig('foreign')],
+    rows: [
+      { entryId: 'headless-runner', inherited: { task: { __jsExpr: 'ctx.headlessStartup.task' } }, override: {} },
+      { entryId: SETTINGS_NAMESPACE, inherited: { servers: [fixtureServerConfig('foreign')] }, override: {} },
+    ],
+  })
+  assert.ok(ctx.tools.schemas().some(schema => schema.name === 'mcp__foreign__echo'))
+  await ctx.fiber.dispose()
+})
+
+test('duplicate serverName in composition throws a clear error', async () => {
   await assert.rejects(
-    ctx.settings.update(SETTINGS_NAMESPACE, {
-      servers: [
+    boot({
+      serverList: [
         { transport: 'stdio', serverName: 'dup', command: 'node a' },
         { transport: 'stdio', serverName: 'dup', command: 'node b' },
       ],
     }),
     /duplicate serverName/,
   )
-  const value = ctx.settings.describe().find((entry) => entry.ns === SETTINGS_NAMESPACE)?.value
-  assert.deepEqual(value, { servers: [] })
+})
+
+test('duplicate serverName in the settings layer fails activation', async () => {
+  await assert.rejects(
+    boot({
+      serverList: [fixtureServerConfig('live')],
+      rows: [{
+        entryId: SETTINGS_NAMESPACE,
+        inherited: { servers: [] },
+        override: {
+          servers: [
+            { transport: 'stdio', serverName: 'dup', command: 'node a' },
+            { transport: 'stdio', serverName: 'dup', command: 'node b' },
+          ],
+        },
+      }],
+    }),
+    /duplicate serverName/,
+  )
+})
+
+test('a committed update with duplicate serverName is reported on the status route', async () => {
+  const ctx = await boot({ serverList: [fixtureServerConfig('live')] })
+  const editor = ctx.get('configEditor')
+  const route = ctx.webServer.routes.find((entry) => entry.path === STATUS_ENDPOINT)
+  assert.equal(invokeRoute(route, 'GET').status, 200)
+
+  editor.layers = [{
+    entryId: SETTINGS_NAMESPACE,
+    inherited: { servers: [] },
+    override: {
+      servers: [
+        { transport: 'stdio', serverName: 'dup', command: 'node a' },
+        { transport: 'stdio', serverName: 'dup', command: 'node b' },
+      ],
+    },
+  }]
+  ctx.emit('loader/volatile-update', [['servers']])
+  assert.ok(await waitFor(() => invokeRoute(route, 'GET').status === 500))
+  const response = invokeRoute(route, 'GET')
+  assert.match(response.json.error, /duplicate serverName/)
   await ctx.fiber.dispose()
 })
 
@@ -155,6 +298,7 @@ test('normalizeServerConfig accepts stdio and fills defaults', () => {
   assert.equal(config.cwd, '')
   assert.equal(config.toolCallTimeoutMs, 60_000)
   assert.equal(config.failOnStartupError, false)
+  assert.equal(config.maxInstructionBytes, 32_768)
 })
 
 test('normalizeServerConfig accepts streamable-http and fills defaults', () => {
@@ -169,6 +313,7 @@ test('normalizeServerConfig accepts streamable-http and fills defaults', () => {
   assert.deepEqual(config.headers, {})
   assert.equal(config.toolCallTimeoutMs, 60_000)
   assert.equal(config.failOnStartupError, false)
+  assert.equal(config.maxInstructionBytes, 32_768)
 })
 
 test('normalizeServerConfig rejects invalid serverName', () => {
@@ -218,7 +363,7 @@ test('summarizeServerStatus reports mounted state and last error', () => {
 })
 
 test('live stdio MCP server mounts native tools and reports mounted status', async () => {
-  const ctx = await bootWithServers([fixtureServerConfig()])
+  const ctx = await boot({ serverList: [fixtureServerConfig()] })
   const names = ctx.tools.schemas().map(schema => schema.name)
   assert.ok(names.includes('mcp__fixture__echo'), `tools were ${names.join(', ')}`)
 
@@ -231,42 +376,98 @@ test('live stdio MCP server mounts native tools and reports mounted status', asy
   await ctx.fiber.dispose()
 })
 
-test('settings update remounts: add a server, then drop it', async () => {
-  const ctx = await bootEmpty()
+test('profile settings layer re-syncs mounts on a committed volatile update', async () => {
+  const ctx = await boot({ serverList: [] })
+  const editor = ctx.get('configEditor')
   assert.equal(ctx.tools.schemas().some(schema => schema.name.startsWith('mcp__live__')), false)
 
-  await ctx.settings.update(SETTINGS_NAMESPACE, { servers: [fixtureServerConfig('live')] })
-  const deadline = Date.now() + 20_000
-  while (Date.now() < deadline) {
-    if (ctx.tools.schemas().some(schema => schema.name === 'mcp__live__echo')) break
-    await sleep(50)
-  }
-  assert.ok(ctx.tools.schemas().some(schema => schema.name === 'mcp__live__echo'))
+  editor.layers = [{
+    entryId: SETTINGS_NAMESPACE,
+    inherited: { servers: [] },
+    override: { servers: [fixtureServerConfig('live')] },
+  }]
+  ctx.emit('loader/volatile-update', [['servers']])
+  assert.ok(await waitFor(() => ctx.tools.schemas().some(schema => schema.name === 'mcp__live__echo')))
 
   const route = ctx.webServer.routes.find((entry) => entry.path === STATUS_ENDPOINT)
   assert.equal(invokeRoute(route).json.servers[0].mounted, true)
 
-  await ctx.settings.replace(SETTINGS_NAMESPACE, { servers: [] })
-  const dropDeadline = Date.now() + 20_000
-  while (Date.now() < dropDeadline) {
-    if (!ctx.tools.schemas().some(schema => schema.name === 'mcp__live__echo')) break
-    await sleep(50)
-  }
-  assert.equal(ctx.tools.schemas().some(schema => schema.name === 'mcp__live__echo'), false)
+  editor.layers = [{
+    entryId: SETTINGS_NAMESPACE,
+    inherited: { servers: [] },
+    override: { servers: [] },
+  }]
+  ctx.emit('loader/volatile-update', [['servers']])
+  assert.ok(await waitFor(() => !ctx.tools.schemas().some(schema => schema.name === 'mcp__live__echo')))
   assert.deepEqual(invokeRoute(route).json.servers, [])
+  await ctx.fiber.dispose()
+})
+
+test('composition servers survive a settings-only volatile update', async () => {
+  const ctx = await boot({ serverList: [fixtureServerConfig('composition')] })
+  const editor = ctx.get('configEditor')
+  assert.ok(ctx.tools.schemas().some(schema => schema.name === 'mcp__composition__echo'))
+
+  editor.layers = [{
+    entryId: SETTINGS_NAMESPACE,
+    inherited: { servers: [fixtureServerConfig('composition')] },
+    override: { servers: [fixtureServerConfig('settings')] },
+  }]
+  ctx.emit('loader/volatile-update', [['servers']])
+  assert.ok(await waitFor(() => ctx.tools.schemas().some(schema => schema.name === 'mcp__settings__echo')))
+  assert.ok(ctx.tools.schemas().some(schema => schema.name === 'mcp__composition__echo'))
+  await ctx.fiber.dispose()
+})
+
+// Regression: profile patch layers keep `!!js` expression nodes unevaluated.
+// The plugin must evaluate them with the Loader's own helper before the server
+// schema normalizes a layer, exactly as the Loader does before mounting the row.
+test('profile layers evaluate !!js expressions like the Loader', async () => {
+  const ctx = await boot({
+    serverList: [],
+    rows: [{
+      entryId: SETTINGS_NAMESPACE,
+      inherited: {
+        servers: [{
+          transport: 'stdio',
+          serverName: 'expr',
+          command: { __jsExpr: 'process.execPath' },
+          args: [fixtureServer],
+          env: { MCP_EXPR_TOKEN: { __jsExpr: "'from-expression'" } },
+          toolCallTimeoutMs: 15_000,
+          failOnStartupError: true,
+        }],
+      },
+      override: {
+        servers: [{
+          transport: 'streamable-http',
+          serverName: 'expr-settings',
+          url: { __jsExpr: "'http://127.0.0.1:9/mcp'" },
+          headers: { Authorization: { __jsExpr: "'Bearer ' + 'token'" } },
+          failOnStartupError: false,
+          toolCallTimeoutMs: 5_000,
+        }],
+      },
+    }],
+  })
+  assert.ok(ctx.tools.schemas().some(schema => schema.name === 'mcp__expr__echo'))
+  const route = ctx.webServer.routes.find((entry) => entry.path === STATUS_ENDPOINT)
+  assert.deepEqual(invokeRoute(route).json.servers.map(server => server.serverName), ['expr', 'expr-settings'])
   await ctx.fiber.dispose()
 })
 
 test('failOnStartupError rejects plugin activation for a dead stdio command', async () => {
   await assert.rejects(
-    bootWithServers([{
-      transport: 'stdio',
-      serverName: 'dead',
-      command: process.execPath,
-      args: ['-e', 'process.exit(1)'],
-      failOnStartupError: true,
-      toolCallTimeoutMs: 5_000,
-    }]),
+    boot({
+      serverList: [{
+        transport: 'stdio',
+        serverName: 'dead',
+        command: process.execPath,
+        args: ['-e', 'process.exit(1)'],
+        failOnStartupError: true,
+        toolCallTimeoutMs: 5_000,
+      }],
+    }),
     /mcp-client|initial connection|failed/i,
   )
 })

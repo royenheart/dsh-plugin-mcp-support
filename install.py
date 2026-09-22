@@ -33,7 +33,7 @@ PACKAGE = "@royenheart/dsh-plugin-mcp-support"
 # Bare runtime imports of the built host bundle (`lib/index.js`). Each must
 # resolve when dsh imports the package through its profile symlink, i.e. from
 # this checkout's node_modules (Node realpaths the symlink).
-RUNTIME_PEERS = ("dsh-settings", "schemastery", "dsh-mcp-client")
+RUNTIME_PEERS = ("cordis-plugin-loader", "cosmokit", "schemastery", "dsh-mcp-client")
 
 
 def repo_root() -> Path:
