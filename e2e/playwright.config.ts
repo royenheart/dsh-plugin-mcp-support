@@ -1,46 +1,44 @@
 /**
- * Playwright + Chromium end-to-end suite for @royenheart/dsh-plugin-mcp-support.
+ * Playwright configuration for the mcp-support end-to-end suite.
  *
- * The suite drives a real `dsh web` profile (the shipped `web` bundle plus the
- * plugin under test) in Chromium, and a real headless/CLI profile for the
- * non-browser surfaces. Servers are managed per spec file, so Playwright's own
- * `webServer` option is intentionally unused and specs never wait on network
- * idle (the web client holds an SSE stream open, so network-idle never fires).
+ * Mirrors the DeepSeek Harness web lane's browser tooling: Chromium, one
+ * worker, no retries (a flake must be fixed, not retried), a pinned viewport,
+ * one explicit locale, and role/ARIA oriented assertions. Specs boot real
+ * `dsh` profiles, so the per-test budget is generous while every individual
+ * wait inside a spec stays bounded.
  */
 import { defineConfig } from '@playwright/test'
+import { artifactsDir } from './helpers/env.ts'
 
-/** Bundled Chromium needs `--no-sandbox` when the runner itself is root. */
-const runningAsRoot = process.platform === 'linux'
-  && typeof process.getuid === 'function'
-  && process.getuid() === 0
+const artifacts = artifactsDir()
 
 export default defineConfig({
   testDir: './specs',
-  globalSetup: './global-setup.ts',
-  // Every scenario owns a dsh home and a booted profile; run files serially.
+  // Artifacts stay out of the plugin tree's committed surface.
+  outputDir: `${artifacts}/test-results`,
   fullyParallel: false,
   workers: 1,
-  // No retries: a flake here means a real nondeterminism to fix, not to mask.
   retries: 0,
   forbidOnly: process.env.CI !== undefined,
-  timeout: 180_000,
+  timeout: 240_000,
   expect: { timeout: 20_000 },
-  outputDir: 'test-results/artifacts',
   reporter: [
     ['list'],
-    ['html', { open: 'never', outputFolder: 'test-results/html' }],
+    ['html', { outputFolder: `${artifacts}/report`, open: 'never' }],
   ],
   use: {
     browserName: 'chromium',
-    viewport: { width: 1440, height: 900 },
-    // One explicit language for role locators; the plugin's own copy is
-    // Chinese regardless of host locale.
+    viewport: { width: 1280, height: 900 },
+    // One explicit language keeps role names and message copy stable.
     locale: 'en-US',
     timezoneId: 'UTC',
+    actionTimeout: 15_000,
+    navigationTimeout: 30_000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',
-    launchOptions: runningAsRoot ? { args: ['--no-sandbox'] } : {},
   },
-  projects: [{ name: 'chromium' }],
+  projects: [
+    { name: 'chromium' },
+  ],
 })

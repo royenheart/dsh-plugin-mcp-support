@@ -1,135 +1,107 @@
 # End-to-end suite — `@royenheart/dsh-plugin-mcp-support`
 
 Playwright + Chromium end-to-end coverage for the plugin's user-visible
-surface, run against a real `dsh` profile. Target harness:
-**dsh 0.1.6-alpha.1** (the version this suite was authored against; older
-harnesses do not ship the `ctx.inject(['webServer'])` seam the plugin now uses).
+surfaces: the browser `mcp` status view, the status HTTP route, the layered
+server configuration, headless activation, and the `install.py` CLI path.
 
-The suite lives in its own package so the plugin's published dependency set is
-untouched. It stages no fixtures inside the checkout under test: `install.py`
-and `npm run build` write `lib/`, so the specs run them against a disposable
-copy materialized under the run's temp root.
+The suite boots **real** `dsh` profiles. Nothing about the harness is mocked:
+each spec materializes a temporary `DSH_HOME`, installs this checkout through
+the shipped `install.py`, writes the profile patch (and, where relevant, a
+local composition bundle) a user would write, and then drives the real web UI
+or the real CLI.
 
-## Requirements
+## Tooling
 
-- Node.js 24+ and npm
-- Python 3 (the plugin's own `install.py`)
-- Chromium: `npm --prefix e2e run e2e:install-browser`
-- network access on the first run of a fresh temp root (dsh installs the
-  shipped `@deepseek-ai/dsh-base` / `dsh-web-app` profile bundles with pnpm)
-
-## Run
+Same tooling as the DeepSeek Harness repository's own web end-to-end lane:
+Playwright driving Chromium.
 
 ```sh
-cd e2e
-npm install
-npm run e2e:install-browser
-
-# Point the suite at the dsh build under test (otherwise `dsh` is taken from PATH):
-DSH_E2E_DSH_BIN=/path/to/dsh-0.1.6-alpha.1/bin/dsh npm run e2e
+npm install --save-dev @playwright/test
+npx playwright install chromium
 ```
 
-Useful variants:
+The suite resolves the browser from the standard Playwright cache
+(`PLAYWRIGHT_BROWSERS_PATH` is honoured automatically).
+
+## Running
 
 ```sh
-npm run e2e -- specs/status-tab.spec.ts       # one spec
-npm run e2e:headed                            # watch the browser
-npm run e2e:report                            # open the HTML report
-npm run e2e:typecheck                         # tsc over harness + specs
+# whole suite, one worker
+npx playwright test --config e2e/playwright.config.ts
+
+# one spec
+npx playwright test --config e2e/playwright.config.ts e2e/specs/web-status-empty.spec.ts
 ```
 
-### Environment knobs
+Environment:
 
-| Variable | Default | Meaning |
+| Variable | Meaning | Default |
 | --- | --- | --- |
-| `DSH_E2E_DSH_BIN` | `dsh` from `PATH` | dsh launcher under test |
-| `DSH_E2E_PACKAGE_ROOT` | the checkout containing `e2e/` | plugin tree the suite installs and drives |
-| `DSH_E2E_TMP` | `<os tmp>/dsh-mcp-support-e2e` | run-owned temp root (dsh homes, markers, package copy) |
-| `DSH_E2E_TEMPLATE_HOME` | `<tmp>/template` | prepared home every scenario clones |
-| `DSH_E2E_FRESH_TEMPLATE` | unset (reuse if prepared) | `1` forces re-preparation of the template home |
-| `DSH_E2E_BOOT_TIMEOUT_MS` | `240000` | `dsh web` boot budget |
-| `DSH_E2E_PYTHON` | `python3` | interpreter for `install.py` |
+| `DSH_E2E_BIN` | `dsh` executable under test | `.dsh-migrate/dsh/dsh-<version>/bin/dsh`, then `/usr/local/bin/dsh`, `/usr/bin/dsh` |
+| `DSH_E2E_PYTHON` | Python used for `install.py` | `python3` |
+| `DSH_E2E_ARTIFACTS` | report/trace/screenshot root | `<repo>/.e2e-artifacts` |
 
-## How a scenario is built
+The suite targets `dsh-v0.1.7-alpha.1` (`DSH_E2E_BIN` must point at that
+version; `--version` is the harness contract the specs are written against).
 
-`global-setup.ts` prepares one template dsh home:
+Artifacts land in `<repo>/.e2e-artifacts/` and are intentionally outside the
+package `files` list; add that directory to `.gitignore` when the suite moves
+onto its own branch.
 
-1. boot `dsh web --port 0` once so the shipped `web` profile and the shared
-   `profiles/node_modules` tree exist;
-2. materialize the shipped `headless` profile with `--dump-config` (no model
-   call);
-3. run the package's own `install.py install` for both profiles, from the
-   disposable package copy.
+## Specs and the coverage ledger
 
-Each spec file then clones that template into its own home — profiles copied,
-`profiles/node_modules` shared by symlink, its own `settings.yaml` and
-`cordis.patch.yml` — and boots `dsh web` on an OS-assigned port. Profile
-preparation cost is paid once per run; scenario homes cost milliseconds.
+`index.json` (the staging root's ledger, which becomes the repository-root
+ledger when the suite lands) is the coverage ledger: one row per user-visible
+feature, each pointing at the spec that exercises it. `state` is `passing`,
+`failing`, or `unknown`; `unknown` rows live in
+`specs/unreachable-surfaces.spec.ts` with the concrete reason the surface
+cannot be reached hermetically, and their `lastPassedFor` is `null`.
 
-## Determinism rules this suite follows
-
-- **No network-idle waits.** The web client holds an SSE stream open, so
-  `networkidle` never resolves. Journeys wait on roles, text, specific
-  responses, or marker files.
-- **Two consecutive equal reads.** `harness/poll.ts` only returns a value that
-  two consecutive reads agree on; every visible state assertion goes through
-  `statusSnapshot()` or `waitForMarker()`. A single DOM sample is never
-  asserted.
-- **Roles and text first, geometry as the invariant.** Assertions use
-  accessible roles/names and visible text; layout is checked with invariants
-  (content wider/taller than its box, overlapping boxes, tab order) instead of
-  pixel baselines. No host `data-*` attribute is read: class selectors only
-  target the plugin's own markup (its public CSS contract) and, for modal
-  readiness, the app's CSS-module mask anchor.
-- **Deterministic state, not timing.** The session view is reached by real
-  gestures (dismiss first-run dialogs → choose a workspace in the picker →
-  commit one composer turn → select the tab). Model credentials are scrubbed
-  from every spawned process, so the turn fails with `MISSING_CREDENTIAL`
-  deterministically while the user message persists — which is what makes the
-  session non-blank and the view-tab row appear.
-- **Markers over inference.** The MCP fixtures append `ready`,
-  `method initialize`, `method tools/list`, `method tools/call` to a marker
-  file. A rendered row cannot prove the native bridge spawned a child or
-  discovered tools; the marker can.
-- **Console/pageerror tripwire per browser spec.** The wrapped `page` fixture
-  fails a test on any unexpected console error or page error. CLI-only specs
-  (no browser surface) use `assertCliTripwire` on the process output instead.
-- **No retries.** A flake means real nondeterminism; `retries: 0`.
-
-## Coverage ledger
-
-| Spec | Features |
+| Spec | Covers |
 | --- | --- |
-| `specs/status-tab.spec.ts` | `mcp` view tab and its position, empty state, refresh |
-| `specs/composition-servers.spec.ts` | composition server list/order, stdio mount + tool discovery, streamable-http handshake + tool discovery, mounted state |
-| `specs/settings-namespace.spec.ts` | settings namespace layering (override + append), live re-sync on settings change |
-| `specs/mount-error.spec.ts` | failed-mount row and its error message |
-| `specs/status-route.spec.ts` | status HTTP route: GET/HEAD/405, exact path |
-| `specs/headless-boot.spec.ts` | activation without `webServer`, bundle row in the composed tree, config union accept/reject, `failOnStartupError` behaviour |
-| `specs/install-cli.spec.ts` | `install.py` install/uninstall idempotency, bundle wiring, boot after install |
-| `specs/dev-surface.spec.ts` | `npm run typecheck`, `npm run build`, `npm test` |
+| `specs/web-status-empty.spec.ts` | `mcp` view tab, empty state, refresh, status-route HTTP contract |
+| `specs/web-status-layering.spec.ts` | composition layer, settings override/append, `!!js` in both layers, stdio + streamable-http rows, layout and painted-dot invariants |
+| `specs/web-legacy-settings.spec.ts` | legacy `settings.yaml` import, volatile re-sync of the mounted set, per-row mount failure after a committed update |
+| `specs/web-duplicate-committed-update.spec.ts` | duplicate `serverName` committed after boot: route 500 and browser error state |
+| `specs/headless-activation.spec.ts` | activation without a web server, real child spawn, `failOnStartupError`, duplicate-name activation error |
+| `specs/cli-install.spec.ts` | `install.py` install/idempotency/uninstall, `--dump-config` composition |
+| `specs/unreachable-surfaces.spec.ts` | skipped rows documenting surfaces owned by the harness or needing unavailable inputs |
 
-`index.json` in the run's staging directory is the machine-readable ledger with
-one row per feature and its verification state.
+## Determinism rules the suite enforces
 
-## Fixtures
+- **No `networkidle`.** Every wait is a predicate over an explicit observation:
+  an HTTP response, a DOM read, a file, or a process log line.
+- **No single transient sample.** DOM and HTTP reads used for assertions go
+  through `pollStable`, which requires **two consecutive agreeing reads**.
+  Where a pre-update state would already be stable (a loading placeholder, a
+  still-empty list), an `accept`/`until` predicate gates which values are
+  eligible to settle.
+- **One console/pageerror tripwire per executing spec.** Browser specs arm
+  `armConsoleTripwire` (any pageerror or console error fails, unless the spec
+  explicitly allows an expected one such as the 500 the duplicate spec
+  asserts). CLI/headless specs arm the equivalent `processTripwire` over the
+  real `dsh` output.
+- **Roles and labels, no host internals.** Selectors use ARIA roles,
+  accessible names, visible text, and this plugin's own class names. Host
+  `data-*` attributes are never asserted on.
+- **Baseline-free visual checks.** Geometry invariants (no content clipped by
+  its box, rows contained by the view, rows not overlapping) and painted-state
+  invariants (mounted vs not-mounted dot colour differs, dots are visible with
+  a real box) replace screenshot baselines.
+- **Bounded and leak-free.** Every child process is spawned with a timeout and
+  killed with its process group; every `DSH_HOME` and workspace directory is
+  removed in `afterAll`.
 
-- `fixtures/mcp-stdio-server.mjs` — MCP stdio server (echo tool) that logs its
-  lifecycle to `MCP_E2E_READY_FILE`. dsh spawns it through the native
-  `@deepseek-ai/dsh-mcp-client` bridge.
-- `fixtures/mcp-http-server.mjs` — MCP streamable-http server on
-  `MCP_E2E_PORT`, harness-owned (a remote transport has no child process to
-  spawn), same marker protocol.
+## Known constraints
 
-Both use the official `@modelcontextprotocol/server` already in the plugin's
-dev toolchain; the suite adds no protocol implementation of its own.
-
-## Notes / known gaps
-
-- The status views are Chinese-labelled (`MCP 状态`, `刷新`) because the plugin
-  ships those strings; the browser runs `en-US` so the host's own role names
-  stay stable.
-- `localhost`-only: the fixtures bind `127.0.0.1`, and `dsh web` is started
-  with `--host 127.0.0.1 --port 0` so parallel local runs never collide.
-- Scenario homes are left under `DSH_E2E_TMP` after a run for debugging; delete
-  the directory to reclaim space, or set `DSH_E2E_TMP` to a scratch volume.
+- The web specs send one prompt so the session leaves its blank hero state and
+  the header's view-tab row renders. The suite configures an obviously invalid
+  API key, so the model call fails; the failure is expected, never asserted on,
+  and produces no browser console output (the one place it does — the 500 in
+  the duplicate spec — is explicitly allowed).
+- `--dump-config` can occasionally drop a bundle layer (observed once in ~56
+  dumps in this environment); `cli-install.spec.ts` re-runs the dump once
+  before asserting, so two consecutive drops still fail.
+- The headless profile reaches the credential boundary instead of a model
+  answer; activation is asserted as the absence of the loader's activation
+  diagnostics plus a readiness marker written by the spawned MCP child.
